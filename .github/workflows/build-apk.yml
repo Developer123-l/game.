@@ -23,21 +23,21 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Capacitor & Prepare Android Project
+      - name: Create Package & Capacitor Config
         run: |
-          npm init -y
+          echo '{"name": "criminal-game", "version": "1.0.0"}' > package.json
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "CriminalGame" "com.criminal.game" --web-dir .
           npx cap add android
           npx cap sync android
 
-      - name: Build APK with Gradle
+      - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CriminalGame-APK
