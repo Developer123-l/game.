@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة التحدي والمجرم</title>
+    <!-- Tailwind CSS للتصميم -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- مكتبة PeerJS للربط المباشر P2P بدون سيرفر -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans flex flex-col items-center p-3">
+
+    <!-- 1. شاشة البداية واختيار الطور -->
+    <div id="setupScreen" class="w-full max-w-md bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-700 mt-6">
+        <h1 class="text-3xl font-black text-red-500 text-center mb-6">🎯 تحدي الأصدقاء</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">اسمك في اللعبة</label>
+                <input id="playerName" type="text" placeholder="اكتب اسمك..." class="w-full p-3 rounded-xl bg-slate-700 text-white border border-slate-600 focus:outline-none focus:border-red-500">
+            </div>
+
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">قسم الأسئلة</label>
+                <select id="categorySelect" class="w-full p-3 rounded-xl bg-slate-700 text-white border border-slate-600 focus:outline-none">
+                    <option value="21">⚽ رياضة / كرة قدم</option>
+                    <option value="11">🎬 أفلام وسينما</option>
+                    <option value="9">💡 معلومات عامة</option>
+                    <option value="17">🔬 علوم وطبيعة</option>
+                    <option value="23">📜 تاريخ</option>
+                </select>
+            </div>
+
+            <!-- اختيار أطوار اللعب -->
+            <div class="pt-2 grid grid-cols-2 gap-2">
+                <button onclick="createRoom('MAFIA')" class="bg-red-600 hover:bg-red-700 font-bold p-3 rounded-xl text-sm shadow-lg">
+                    🕵️ طور الصحاب (المجرم)
+                </button>
+                <button onclick="createRoom('1V1')" class="bg-amber-600 hover:bg-amber-700 font-bold p-3 rounded-xl text-sm shadow-lg">
+                    ⚔️ طور التحدي (1v1)
+                </button>
+            </div>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-slate-700"></div>
+                <span class="flex-shrink mx-4 text-slate-500 text-xs">أو انضم لصحابك</span>
+                <div class="flex-grow border-t border-slate-700"></div>
+            </div>
+
+            <!-- انضمام -->
+            <div class="flex gap-2">
+                <input id="roomIdInput" type="text" placeholder="كود الروم..." class="flex-1 p-3 rounded-xl bg-slate-700 text-white border border-slate-600 focus:outline-none text-sm">
+                <button onclick="joinRoom()" class="bg-blue-600 hover:bg-blue-700 font-bold px-5 rounded-xl text-sm">انضمام</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. واجهة اللعبة العامة -->
+    <div id="gameScreen" class="hidden w-full max-w-md flex-col gap-3">
+        
+        <!-- كود الروم -->
+        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 flex justify-between items-center text-xs">
+            <span class="text-slate-400">كود الروم: <b id="displayRoomId" class="text-emerald-400 select-all">---</b></span>
+            <span id="gameModeBadge" class="bg-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-md font-bold">---</span>
+        </div>
+
+        <!-- ─── أ) واجهة طور المجرم ─── -->
+        <div id="mafiaUI" class="hidden flex-col gap-3">
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-md">
+                <h2 id="roleTitle" class="text-lg font-bold text-center text-slate-400">في انتظار بداية الجولة...</h2>
+                <div id="questionBox" class="hidden mt-3 p-3 bg-slate-700/50 rounded-xl border border-slate-600">
+                    <p class="text-xs text-amber-400 font-bold">سؤال المحققين:</p>
+                    <p id="questionText" class="text-sm font-semibold text-slate-200 mt-1"></p>
+                </div>
+            </div>
+
+            <!-- الشات المباشر -->
+            <div class="bg-slate-800 rounded-2xl p-3 border border-slate-700 flex flex-col h-52">
+                <div id="chatBox" class="flex-1 overflow-y-auto space-y-2 mb-2 text-xs pr-1"></div>
+                <div class="flex gap-2">
+                    <input id="msgInput" type="text" placeholder="اكتب سؤالك أو ردك..." class="flex-1 p-2 rounded-xl bg-slate-700 border border-slate-600 focus:outline-none text-xs">
+                    <button onclick="sendChat()" class="bg-red-600 px-3 py-2 rounded-xl font-bold text-xs">إرسال</button>
+                </div>
+            </div>
+
+            <!-- التصويت -->
+            <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700">
+                <h3 class="text-xs font-bold text-slate-400 mb-2">اللاعبين (اضغط للتصويت):</h3>
+                <div id="playersListMafia" class="space-y-1.5"></div>
+            </div>
+        </div>
+
+        <!-- ─── ب) واجهة طور 1v1 ─── -->
+        <div id="pvpUI" class="hidden flex-col gap-3">
+            <!-- نتيجة النقط والأسئلة -->
+            <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700 flex justify-between items-center text-sm font-bold">
+                <div id="p1Score" class="text-emerald-400">أنت: 0</div>
+                <div id="qCounter" class="text-slate-400 text-xs bg-slate-700 px-2 py-1 rounded-lg">السؤال 0 / 10</div>
+                <div id="p2Score" class="text-amber-400">المنافس: 0</div>
+            </div>
+
+            <!-- بطاقة السؤال والخيارات -->
+            <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-center">
+                <p id="pvpQuestion" class="text-sm font-bold text-slate-200 mb-4">في انتظار المنافس وبداية التحدي...</p>
+                <div id="pvpOptions" class="grid grid-cols-1 gap-2"></div>
+            </div>
+        </div>
+
+        <!-- زر البدء الخاص بالـ Host -->
+        <button id="startBtn" onclick="hostStartGame()" class="hidden w-full bg-emerald-600 hover:bg-emerald-700 font-bold py-3 rounded-xl shadow-lg transition-all text-sm">
+            ابدأ اللعبة الآن
+        </button>
+
+    </div>
+
+    <script>
+        let peer = null;
+        let myId = '', myName = '', isHost = false;
+        let selectedCategory = '21', gameMode = ''; // MAFIA or 1V1
+        let connections = [];
+        let hostConn = null;
+        let players = []; 
+
+        // بيانات طور 1v1
+        let currentQuestions = [];
+        let pvpIndex = 0;
+        let scores = {};
+
+        // 1. إنشاء غرفة (Host)
+        function createRoom(mode) {
+            myName = document.getElementById('playerName').value.trim();
+            if(!myName) return alert('اكتب اسمك الأول!');
+
+            gameMode = mode;
+            selectedCategory = document.getElementById('categorySelect').value;
+            isHost = true;
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                myId = id;
+                players.push({ id: myId, name: myName, votes: 0 });
+                scores[myId] = 0;
+                setupUI();
+            });
+
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                conn.on('data', (data) => handleHostData(conn, data));
+            });
+        }
+
+        // 2. الانضمام لغرفة (Guest)
+        function joinRoom() {
+            myName = document.getElementById('playerName').value.trim();
+            const roomId = document.getElementById('roomIdInput').value.trim();
+            if(!myName || !roomId) return alert('اكتب اسمك وكود الروم!');
+
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myId = id;
+                hostConn = peer.connect(roomId);
+                
+                hostConn.on('open', () => {
+                    hostConn.send({ type: 'JOIN', name: myName, id: myId });
+                });
+
+                hostConn.on('data', (data) => handleGuestData(data));
+            });
+        }
+
+        function setupUI() {
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+            document.getElementById('gameScreen').classList.add('flex');
+            
+            document.getElementById('displayRoomId').innerText = isHost ? myId : hostConn.peer;
+            document.getElementById('gameModeBadge').innerText = gameMode === 'MAFIA' ? 'طور المجرم' : 'طور 1v1';
+
+            if(gameMode === 'MAFIA') {
+                document.getElementById('mafiaUI').classList.remove('hidden');
+                document.getElementById('mafiaUI').classList.add('flex');
+            } else {
+                document.getElementById('pvpUI').classList.remove('hidden');
+                document.getElementById('pvpUI').classList.add('flex');
+            }
+
+            if(isHost) document.getElementById('startBtn').classList.remove('hidden');
+        }
+
+        // جلب الأسئلة فورياً من مكتبة OpenTDB
+        async function fetchQuestions(amount = 10) {
+            try {
+                const res = await fetch(`https://opentdb.com/api.php?amount=${amount}&category=${selectedCategory}&type=multiple`);
+                const data = await res.json();
+                return data.results.map(q => {
+                    const answers = [...q.incorrect_answers, q.correct_answer].sort(() => Math.random() - 0.5);
+                    return {
+                        question: decodeHTMLEntities(q.question),
+                        correct: decodeHTMLEntities(q.correct_answer),
+                        options: answers.map(a => decodeHTMLEntities(a))
+                    };
+                });
+            } catch (e) {
+                // أسئلة احتياطية محلياً عند عدم وجود اتصال
+                return [
+                    { question: "من الفائز بكأس العالم 2022؟", correct: "الأرجنتين", options: ["الأرجنتين", "فرنسا", "البرازيل", "ألمانيا"] },
+                    { question: "ما هي عاصمة إسبانيا؟", correct: "مدريد", options: ["برشلونة", "مدريد", "اشبيلية", "فالنسيا"] }
+                ];
+            }
+        }
+
+        function decodeHTMLEntities(text) {
+            const textArea = document.createElement('textarea');
+            textArea.innerHTML = text;
+            return textArea.value;
+        }
+
+        // 3. بدء اللعبة (Host)
+        async function hostStartGame() {
+            if (gameMode === 'MAFIA') {
+                if (players.length < 2) return alert('محتاجين لاعب كمان على الأقل!');
+                const qData = await fetchQuestions(1);
+                const question = qData[0].question;
+                const killerIndex = Math.floor(Math.random() * players.length);
+
+                players.forEach((p, index) => {
+                    p.votes = 0;
+                    const role = (index === killerIndex) ? 'killer' : 'detective';
+                    const payload = { type: 'ROLE', role, question: role === 'detective' ? question : null };
+
+                    if (p.id === myId) setMafiaRole(role, payload.question);
+                    else connections.find(c => c.peer === p.id)?.send(payload);
+                });
+                broadcast({ type: 'UPDATE_PLAYERS', players });
+                updatePlayersListMafia();
+            } else {
+                // طور 1v1
+                currentQuestions = await fetchQuestions(10);
+                pvpIndex = 0;
+                players.forEach(p => scores[p.id] = 0);
+                sendPvpQuestion();
+            }
+        }
+
+        function sendPvpQuestion() {
+            if(pvpIndex >= currentQuestions.length) {
+                broadcast({ type: 'PVP_END', scores });
+                renderPvpEnd(scores);
+                return;
+            }
+            const q = currentQuestions[pvpIndex];
+            const payload = { type: 'PVP_QUESTION', question: q, index: pvpIndex + 1, scores };
+            broadcast(payload);
+            renderPvpQuestion(q, pvpIndex + 1, scores);
+        }
+
+        // إدارة الـ Host للرسائل الواردة
+        function handleHostData(conn, data) {
+            if (data.type === 'JOIN') {
+                gameMode = data.mode || gameMode;
+                players.push({ id: data.id, name: data.name, votes: 0 });
+                scores[data.id] = 0;
+                conn.send({ type: 'INIT', mode: gameMode });
+                broadcast({ type: 'UPDATE_PLAYERS', players });
+                if(gameMode === 'MAFIA') updatePlayersListMafia();
+            } else if (data.type === 'CHAT') {
+                broadcast(data);
+                renderMsg(data.sender, data.text);
+            } else if (data.type === 'VOTE') {
+                const p = players.find(x => x.id === data.targetId);
+                if(p) p.votes++;
+                broadcast({ type: 'UPDATE_PLAYERS', players });
+                updatePlayersListMafia();
+            } else if (data.type === 'PVP_ANSWER') {
+                if(data.answer === currentQuestions[pvpIndex].correct) {
+                    scores[data.playerId] = (scores[data.playerId] || 0) + 10;
+                }
+                pvpIndex++;
+                sendPvpQuestion();
+            }
+        }
+
+        // إدارة الـ Guest للرسائل الواردة
+        function handleGuestData(data) {
+            if (data.type === 'INIT') {
+                gameMode = data.mode;
+                setupUI();
+            } else if (data.type === 'UPDATE_PLAYERS') {
+                players = data.players;
+                if(gameMode === 'MAFIA') updatePlayersListMafia();
+            } else if (data.type === 'ROLE') {
+                setMafiaRole(data.role, data.question);
+            } else if (data.type === 'CHAT') {
+                renderMsg(data.sender, data.text);
+            } else if (data.type === 'PVP_QUESTION') {
+                renderPvpQuestion(data.question, data.index, data.scores);
+            } else if (data.type === 'PVP_END') {
+                renderPvpEnd(data.scores);
+            }
+        }
+
+        // ─── منطق الطور الأساسي (المجرم) ───
+        function setMafiaRole(role, question) {
+            const title = document.getElementById('roleTitle');
+            const qBox = document.getElementById('questionBox');
+            if (role === 'killer') {
+                title.innerText = "🔪 أنت المجرم! (تمويه وماتتفضحش)";
+                title.className = "text-lg font-black text-center text-red-500 animate-pulse";
+                qBox.classList.add('hidden');
+            } else {
+                title.innerText = "🔍 أنت محقق!";
+                title.className = "text-lg font-black text-center text-blue-400";
+                qBox.classList.remove('hidden');
+                document.getElementById('questionText').innerText = question;
+            }
+        }
+
+        function sendChat() {
+            const input = document.getElementById('msgInput');
+            if(!input.value.trim()) return;
+            const msgData = { type: 'CHAT', sender: myName, text: input.value.trim() };
+            if (isHost) { broadcast(msgData); renderMsg(myName, input.value.trim()); }
+            else hostConn.send(msgData);
+            input.value = '';
+        }
+
+        function renderMsg(sender, text) {
+            const box = document.getElementById('chatBox');
+            box.innerHTML += `<div class="bg-slate-700/60 p-2 rounded-xl"><b class="text-red-400">${sender}:</b> ${text}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updatePlayersListMafia() {
+            document.getElementById('playersListMafia').innerHTML = players.map(p => `
+                <div class="flex justify-between items-center bg-slate-700/50 p-2 rounded-xl border border-slate-600">
+                    <span class="text-xs font-medium">${p.name}</span>
+                    <button onclick="castVote('${p.id}')" class="bg-red-500/20 text-red-400 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold">
+                        تصويت (${p.votes})
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function castVote(targetId) {
+            if(isHost) {
+                const p = players.find(x => x.id === targetId);
+                if(p) p.votes++;
+                broadcast({ type: 'UPDATE_PLAYERS', players });
+                updatePlayersListMafia();
+            } else hostConn.send({ type: 'VOTE', targetId });
+        }
+
+        // ─── منطق طور 1v1 ───
+        function renderPvpQuestion(q, index, currentScores) {
+            document.getElementById('qCounter').innerText = `السؤال ${index} / 10`;
+            document.getElementById('p1Score').innerText = `أنت: ${currentScores[myId] || 0}`;
+            const oppId = Object.keys(currentScores).find(id => id !== myId);
+            document.getElementById('p2Score').innerText = `المنافس: ${currentScores[oppId] || 0}`;
+
+            document.getElementById('pvpQuestion').innerText = q.question;
+            const optionsBox = document.getElementById('pvpOptions');
+            optionsBox.innerHTML = q.options.map(opt => `
+                <button onclick="submitAnswer('${opt}')" class="bg-slate-700 hover:bg-indigo-600 p-3 rounded-xl text-xs font-bold transition-all text-right border border-slate-600">
+                    ${opt}
+                </button>
+            `).join('');
+        }
+
+        function submitAnswer(ans) {
+            document.getElementById('pvpOptions').innerHTML = `<p class="text-xs text-amber-400 py-4 font-bold">تم إرسال الإجابة، بانتظار السؤال التالي...</p>`;
+            if(isHost) {
+                if(ans === currentQuestions[pvpIndex].correct) scores[myId] = (scores[myId] || 0) + 10;
+                pvpIndex++;
+                sendPvpQuestion();
+            } else {
+                hostConn.send({ type: 'PVP_ANSWER', answer: ans, playerId: myId });
+            }
+        }
+
+        function renderPvpEnd(finalScores) {
+            const myScore = finalScores[myId] || 0;
+            const oppId = Object.keys(finalScores).find(id => id !== myId);
+            const oppScore = finalScores[oppId] || 0;
+
+            let resultMsg = "تعادل! 🤝";
+            if(myScore > oppScore) resultMsg = "🏆 فوز ساحق! عاش يا بطل!";
+            else if(myScore < oppScore) resultMsg = "❌ خسرنا الماتش! حظ سعيد الجولة الجاية.";
+
+            document.getElementById('pvpQuestion').innerText = resultMsg;
+            document.getElementById('pvpOptions').innerHTML = `<div class="p-4 bg-slate-700/50 rounded-xl font-bold text-sm text-amber-400">النتيجة النهائية: ${myScore} - ${oppScore}</div>`;
+        }
+
+        function broadcast(data) {
+            connections.forEach(conn => conn.send(data));
+        }
+    </script>
+</body>
+</html>
